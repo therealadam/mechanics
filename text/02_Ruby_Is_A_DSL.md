@@ -9,7 +9,7 @@ of the concerns of writing C code.
 
 Consider this simple Ruby program:
 
-@@@ ruby dsl/beatles_ruby.rb @@@
+@@@ ruby matz_dsl/beatles_ruby.rb @@@
 
 Here it is, implemented as a C extension to Ruby:
 
@@ -27,3 +27,69 @@ constructs, rather than C constructs.
 And what's that `VALUE` thing. In C terms, it's a long pointer. In Ruby terms,
 it's any old object.
 
+* * * * *
+
+A simple way to learn how to write extensions is to translate Ruby code to C.
+It's surprising, but it's a thing you can actually do!
+
+Here's a Ruby program that prints out the Beatles:
+
+@@@ ruby matz_dsl/beatles_ruby.rb @@@
+
+Let's take this apart and convert it to a C extension. In the process, we'll
+even get to do some build configuration and automation, write our own `for`
+loop, without even needing to allocate our own memory!
+
+We can tackle this extension one line at a time. We need to do two things to
+define a module: a memory location to hang it on, and then put a module on that
+location.
+
+Here's how we get the memory location for our module:
+
+@@@ ruby matz_dsl/beatles/ext/beatles.c:3 @@@
+
+Here's how to deconstruct that line:
+
+* `VALUE` is syntactic structure (implemented as a `cpp` macro) for storing
+  a Ruby object.
+* `Beatles` is a name for our object
+* `Qnil` is the `nil` object; we're using it as a placeholder, as we need Ruby
+  to put an actual module in it when it initializes our extension
+
+Let's take a peek at how that initializer works:
+
+@@@ ruby matz_dsl/beatles/ext/beatles.c:6-9 @@@
+
+By convention, MRI will call this function when it loads our extension. It is
+expected to create all of the Ruby objects needed to interact with the C code
+in our extension. In this case, that's a single module with a single module
+method on it. In an extension like Nokogiri, you'll find dozens of classes and
+modules created that link hundreds of C functions to Ruby methods.
+
+For now, let's look right at the first line of our `Init` function. It calls
+a function from Ruby's extension API, `rb_define_module` and assigns the
+returned Ruby object, a `Module` to the name we pre-defined earlier. So now,
+`Beatles` references a Ruby `Module` object. It's basically like this
+pseudo-code:
+
+``` ruby
+Beatles = Module.new
+```
+
+Except, it's a lot more verbose. Hold on to your britches, because things are
+about to get a lot more verbose.
+
+You probably noticed another definition for `print_beatles` earlier, and
+something about defining it in the initializer. This is basically the same
+manuever as before: we need a memory location and a name to hang our function
+and method (i.e. `VALUE print_beatles(VALUE self)`) and then we put a Ruby
+object into it via the mouthful `rb_define_singleton_method`. The latter takes
+the `Beatles` module we defined, and attaches the `print_beatles` function
+we're about to define to the `print` method; the last argument, 0, indicates
+that the function we're calling takes zero arguments.
+
+(TODO: explain the actual function)
+
+... Along the way, you can see how Ruby is really Matz's DSL for writing C.
+A lot of Ruby constructs, like defining modules and methods, translate
+directly to a C function.
