@@ -88,8 +88,77 @@ the `Beatles` module we defined, and attaches the `print_beatles` function
 we're about to define to the `print` method; the last argument, 0, indicates
 that the function we're calling takes zero arguments.
 
-(TODO: explain the actual function)
+Now let's dig into the meat of our extension, `print_beatles`. We'll take it
+line by line:
+
+```c
+VALUE print_beatles(VALUE self) {
+```
+
+To our Ruby programmer eyes, this means that our function takes a Ruby object,
+the self reference, and returns a Ruby object.
+
+```c
+VALUE beatles, name, puts, kernel, args;
+int i;
+```
+
+It's often easier to read C functions when the variables are declared before
+they are initialized or used. Further, this specifies how our Ruby object
+pointers (any `VALUE` is a Ruby object) and our loop counter `i` are allocated:
+the pointers and counter are placed on the stack for this function invocation.
+However, the actual memory for our Ruby objects will be on the heap managed by
+Ruby and its garbage collector.
+
+```c
+beatles = rb_ary_new3(4, rb_str_new2("John"), rb_str_new2("Paul"),
+                         rb_str_new2("George"), rb_str_new2("Ringo"));
+```
+
+Now we're into the meat of our function. Here we're allocating a new Ruby
+array which in turn contains four Ruby strings. This is exactly like the array
+defined in our Ruby program, except its more verbose when we're writing C. Note
+that we didn't need to worry about memory; again, the heap memory for these are
+managed by Ruby.
+
+The last thing we create are references to Ruby's `Kernel` module and its `puts` method:
+
+```c
+kernel  = rb_define_module("Kernel");
+puts    = rb_intern("puts");
+```
+
+Only five lines of code into our C function, we can get down to the business of
+looping through our array and printing out names:
+
+```c
+for (i = 0; i < RARRAY_LENINT(beatles); i++) {
+  args = rb_ary_to_ary(rb_ary_entry(beatles, i));
+  rb_apply(kernel, puts, args);
+}
+```
+
+Gird your loins, that's a regular 'ole C loop. It's kinda not fun, next to
+writing a Ruby loop with `Enumerable`, is it? On the other hand, this code _is_
+very easy for the C compiler to transform into relatively fast machine code.
+It's a trade-off!
+
+The first Ruby-centric thing to notice about the loop is that it's using
+a macro `RARRAY_LENINT` as the loop condition. This macro, a part of the Ruby
+API for extension writers, expands to a bunch of code that gives us the length
+of a Ruby array using a primitive integer. Handy!
+
+Inside our loop, we extract an entry from our array of Beatles with
+`rb_ary_entry`. This is basically the same as `Array#at`. It gives us a Ruby
+object, in this case an `RString`, that we then wrap in array. We have to wrap
+it in array because that's how the next function, `rb_apply`, expects it.
+`rb_apply` is basically like calling `send` on an object; in this case, we're
+basically saying `Kernel.send(:puts, args)`.
+
+Finally our function returns `Qnil`; this is exactly the same as `nil` in
+a Ruby program. Literally! They are exactly the same object!
 
 ... Along the way, you can see how Ruby is really Matz's DSL for writing C.
 A lot of Ruby constructs, like defining modules and methods, translate
 directly to a C function.
+
